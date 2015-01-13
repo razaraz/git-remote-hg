@@ -11,18 +11,6 @@ test_description='Test remote-hg output compared to hg-git'
 test -n "$TEST_DIRECTORY" || TEST_DIRECTORY=$(dirname $0)/
 . "$TEST_DIRECTORY"/test-lib.sh
 
-if ! test_have_prereq PYTHON
-then
-	skip_all='skipping remote-hg tests; python not available'
-	test_done
-fi
-
-if ! python2 -c 'import mercurial' > /dev/null 2>&1
-then
-	skip_all='skipping remote-hg tests; mercurial not available'
-	test_done
-fi
-
 if python2 -c 'import hggit' > /dev/null 2>&1
 then
 	hggit=hggit

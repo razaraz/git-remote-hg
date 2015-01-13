@@ -11,18 +11,6 @@ test_description='Test remote-hg'
 test -n "$TEST_DIRECTORY" || TEST_DIRECTORY=$(dirname $0)/
 . "$TEST_DIRECTORY"/test-lib.sh
 
-if ! test_have_prereq PYTHON
-then
-	skip_all='skipping remote-hg tests; python not available'
-	test_done
-fi
-
-if ! python2 -c 'import mercurial' > /dev/null 2>&1
-then
-	skip_all='skipping remote-hg tests; mercurial not available'
-	test_done
-fi
-
 check () {
 	echo $3 > expected &&
 	git --git-dir=$1/.git log --format='%s' -1 $2 > actual &&
