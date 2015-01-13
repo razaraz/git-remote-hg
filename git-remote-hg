@@ -204,7 +204,7 @@ class HTTPPasswordHandler(object):
             output, _ = process.communicate(input)
             # TODO: handle user abort
 
-            kv = dict(re.findall(r'(\S+)=(".*?"|\S+)', output))
+            kv = dict(re.findall(r'([^\n=]+)=([^\n]+)', output))
             user = kv['username']
             pwd = kv['password']
 
