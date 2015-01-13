@@ -194,11 +194,11 @@ class HTTPPasswordHandler(object):
         if not after_bad_auth:
             debug("Looking for password for user %s and url %s" % (user, base_url))
 
-            input  = "protocol=%s\n" % parsed_url.scheme;
-            input += "host=%s\n" % parsed_url.netloc;
-            input += "path=%s\n" % parsed_url.path;
+            input  = "protocol=%s\n" % parsed_url.scheme
+            input += "host=%s\n" % parsed_url.netloc
+            input += "path=%s\n" % parsed_url.path
             if user:
-                input += "username=%s\n" % user;
+                input += "username=%s\n" % user
             cmd = ['git', 'credential', 'fill']
             process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             output, _ = process.communicate(input)
