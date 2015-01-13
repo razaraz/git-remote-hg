@@ -19,7 +19,9 @@ matrix:
     - env: HG_VERSION=2.9.1
     - env: HG_VERSION=2.8.2
     - env: HG_VERSION=2.7.2
-    - env: HG_VERSION=3.0
+    - env: HG_VERSION=3.0.1
+    - env: HG_VERSION=3.1.2
+    - env: HG_VERSION=3.2.4
     - env: HG_VERSION=dev
     - python: 2.7
     - python: 2.6
