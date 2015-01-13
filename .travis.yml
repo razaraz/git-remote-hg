@@ -5,7 +5,10 @@ install:
     then pip install -q Mercurial${HG_VERSION+==$HG_VERSION};
     else pip install -q http://selenic.com/repo/hg/archive/tip.tar.gz;
     fi
-  - pip install -q dulwich hg-git || true
+  - if [ "$HG_GIT_VERSION" != "dev" ];
+    then pip install -q dulwich${HG_GIT_VERSION+==$HG_GIT_VERSION};
+    else pip install -q https://bitbucket.org/durin42/hg-git/get/tip.tar.bz2;
+    fi
 
 before_script:
   - hg --version || true
