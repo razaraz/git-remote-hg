@@ -11,6 +11,7 @@ install:
     fi
 
 before_script:
+  - git --version || true
   - hg --version || true
   - pip show hg-git dulwich
 
