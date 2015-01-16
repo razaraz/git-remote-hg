@@ -16,11 +16,8 @@ from mercurial import hg, ui, bookmarks, context, encoding
 from mercurial import node, error, extensions, discovery, util
 from mercurial import changegroup
 
-try:
-    from mercurial.url import passwordmgr
-except:
-    from mercurial.httprepo import passwordmgr
-from urllib2 import AbstractBasicAuthHandler, AbstractDigestAuthHandler
+from mercurial.url import passwordmgr
+from mercurial import httpconnection
 
 import re
 import sys
@@ -29,6 +26,7 @@ import json
 import shutil
 import subprocess
 import urllib
+import urllib2
 import atexit
 import urlparse
 import hashlib
@@ -122,7 +120,6 @@ def get_config_bool(config, default=False):
         return default
 
 # The following is copied from mercurial_keyring
-# TODO: figure out how to prevent mercurial_keyring from loading
 def monkeypatch_method(cls,fname=None):
     def decorator(func):
         local_fname = fname
@@ -133,67 +130,45 @@ def monkeypatch_method(cls,fname=None):
         return func
     return decorator
 
-############################################################
-
-def _debug_reply(msg, url, user, pwd):
-    debug("%s. Url: %s, user: %s, passwd: %s" % (
-            msg, url, user, pwd and '*' * len(pwd) or 'not set'))
-
 class HTTPPasswordHandler(object):
-    def __init__(self):
-        self.pwd_cache = {}
-        self.last_reply = None
+    def find_auth(self, pwmgr, realm, authuri):
+        debug("find_auth(realm=%s, authuri=%s)" % (realm, authuri))
 
-    def find_auth(self, pwmgr, realm, authuri, req):
+        # TODO: detect retries (see "after_bad_auth" in mecurial_keyring),
+        # and in that case ... ? abort? use "git credential reject"?
+        # (but that may not be what the user wants)
+        # Or somehow force / coerce "git credential fill" to ask interactively
+        # (and not use e.g. OS X keychain helper)?
 
-        debug("find_auth(realm=%s, authuri=%s, req=%s)" % (realm, authuri, req))
-        # DEBUG: find_auth(realm=Bitbucket.org HTTP,
-        #               authuri=https://bitbucket.org/Mekk/mercurial_keyring/?cmd=unbundle,
-        #               req=<urllib2.Request instance at 0x104198dd0>)
+        # TODO: but note that hg itself is buggy in that regard, and does not
+        # actually ask the user again for a password once it has been entered!
+        # I.e. with and w/o mercurial_keyring installed, we get rather
+        # different behaviour. See
+        # http://bz.selenic.com/show_bug.cgi?id=3210
 
-        # If we are called again just after identical previous
-        # request, then the previously returned auth must have been
-        # wrong. So we note this to force password prompt (and avoid
-        # reusing bad password indifinitely).
-        after_bad_auth = (self.last_reply \
-                          and (self.last_reply['realm'] == realm) \
-                          and (self.last_reply['authuri'] == authuri) \
-                          and (self.last_reply['req'] == req))
-        if after_bad_auth:
-            debug("Working after bad authentication, cached passwords not used %s" % str(self.last_reply))
+        # TODO: also use "git credential approve" and "reject"...
 
-        # Strip query params etc. to get actual remote repository url.
+        authinfo = urllib2.HTTPPasswordMgrWithDefaultRealm.find_user_password(
+            pwmgr, realm, authuri)
+        user, passwd = authinfo
+        if user and passwd:
+            return (user, passwd)
+
+        res = httpconnection.readauthforuri(pwmgr.ui, authuri, user)
+        if res:
+            group, auth = res
+            user, passwd = auth.get('username'), auth.get('password')
+            debug("using auth.%s.* for authentication\n" % group)
+
         parsed_url = urlparse.urlparse(authuri)
-        #TODO: use urlparse.urlunsplit?
-        base_url = "%s://%s%s" % (parsed_url.scheme, parsed_url.netloc, parsed_url.path)
+        if parsed_url.username and not user:
+            user = parsed_url.username
 
-        user = parsed_url.username
-        pwd = parsed_url.password
+        if parsed_url.password and not passwd:
+            passwd = parsed_url.password
 
-        # Extracting possible username (or password) stored directly in repository url
-        if user and pwd:
-            _debug_reply("Auth data found in repository URL",
-                         base_url, user, pwd)
-            self.last_reply = dict(realm=realm,authuri=authuri,user=user,req=req)
-            return user, pwd
-
-        # Checking the memory cache (there may be many http calls per command)
-        cache_key = (realm, base_url)
-        if not after_bad_auth:
-            cached_auth = self.pwd_cache.get(cache_key)
-            if cached_auth:
-                user, pwd = cached_auth
-                _debug_reply("Cached auth data found",
-                             base_url, user, pwd)
-                self.last_reply = dict(realm=realm,authuri=authuri,user=user,req=req)
-                return user, pwd
-
-        # Loading password from keyring.
-        # Only if username is known (so we know the key) and we are
-        # not after failure (so we don't reuse the bad password).
-        if not after_bad_auth:
-            debug("Looking for password for user %s and url %s" % (user, base_url))
-
+        if not user or not passwd:
+            debug("invoking git-credential...")
             input  = "protocol=%s\n" % parsed_url.scheme
             input += "host=%s\n" % parsed_url.netloc
             input += "path=%s\n" % parsed_url.path
@@ -202,22 +177,25 @@ class HTTPPasswordHandler(object):
             cmd = ['git', 'credential', 'fill']
             process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             output, _ = process.communicate(input)
-            # TODO: handle user abort
+
+            if process.returncode != 0:
+                raise util.Abort('git-remote-hg: http auth required, git-credential aborted')
 
             kv = dict(re.findall(r'([^\n=]+)=([^\n]+)', output))
             user = kv['username']
-            pwd = kv['password']
+            passwd = kv['password']
 
-            if pwd:
-                self.pwd_cache[cache_key] = user, pwd
-                _debug_reply("Keyring password found",
-                             base_url, user, pwd)
-                self.last_reply = dict(realm=realm,authuri=authuri,user=user,req=req)
-                return user, pwd
-            else:
-                debug("Password not present in the keyring")
+        if not user:
+            raise util.Abort('git-remote-hg: http auth required but could not find username')
 
-        raise util.Abort('git-remote-hg: http authorization required but git-credential failed')
+        if not passwd:
+            raise util.Abort('git-remote-hg: http auth required but could not find password')
+
+        debug("Keyring password found, URL %s: user %s, passwd %s",
+              authuri, user, passwd and '*' * len(passwd) or 'not set')
+        pwmgr.add_password(realm, authuri, user, passwd)
+        return (user, passwd)
+
 
 ############################################################
 
@@ -227,30 +205,7 @@ def find_user_password(self, realm, authuri):
     if not hasattr(self, '_git_remote_hg_pwd_handler'):
         self._git_remote_hg_pwd_handler = HTTPPasswordHandler()
 
-    if hasattr(self, '_git_remote_hg_http_req'):
-        req = self._git_remote_hg_http_req
-    else:
-        req = None
-
-    return self._git_remote_hg_pwd_handler.find_auth(self, realm, authuri, req)
-
-@monkeypatch_method(AbstractBasicAuthHandler, "http_error_auth_reqed")
-def basic_http_error_auth_reqed(self, authreq, host, req, headers):
-    self.passwd._git_remote_hg_http_req = req
-    try:
-        return basic_http_error_auth_reqed.orig(self, authreq, host, req, headers)
-    finally:
-        self.passwd._git_remote_hg_http_req = None
-
-@monkeypatch_method(AbstractDigestAuthHandler, "http_error_auth_reqed")
-def digest_http_error_auth_reqed(self, authreq, host, req, headers):
-    self.passwd._git_remote_hg_http_req = req
-    try:
-        return digest_http_error_auth_reqed.orig(self, authreq, host, req, headers)
-    finally:
-        self.passwd._git_remote_hg_http_req = None
-
-
+    return self._git_remote_hg_pwd_handler.find_auth(self, realm, authuri)
 
 class Marks:
 
@@ -525,6 +480,7 @@ def get_repo(url, alias):
 
     myui = ui.ui()
     myui.setconfig('ui', 'interactive', 'off')
+    myui.setconfig('extensions', 'mercurial_keyring', '!')  # disable mercurial_keyring
     myui.fout = sys.stderr
 
     if get_config_bool('remote-hg.insecure'):
