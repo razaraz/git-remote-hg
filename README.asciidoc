@@ -6,14 +6,31 @@ repositories as if they were Git ones:
 git clone "hg::http://selenic.com/repo/hello"
 --------------------------------------
 
-To enable this, simply add the 'git-remote-hg' script anywhere in your `$PATH`:
+== Installation ==
+
+'git-remote-hg' consists of a single Python script. It couldn't get simpler.
+
+=== Gentoo ===
+
+Under Gentoo Linux, add the third-party
+https://github.com/leycec/raiagent[raiagent] overlay and emerge 'git-remote-hg':
 
 --------------------------------------
-curl -o ~/bin/git-remote-hg https://raw.githubusercontent.com/felipec/git-remote-hg/master/git-remote-hg
+layman -a raiagent
+emerge --autounmask-write git-remote-hg
+--------------------------------------
+
+=== Manual ===
+
+On other platforms, manually install both Python 2 and Mercurial and download
+the latest 'git-remote-hg' script to any directory in your `$PATH`: e.g.,
+
+--------------------------------------
+curl -o ~/bin/git-remote-hg https://raw.githubusercontent.com/fingolfin/git-remote-hg/master/git-remote-hg
 chmod +x ~/bin/git-remote-hg
 --------------------------------------
 
-That's it :)
+That's it. :)
 
 == Configuration ==
 
@@ -125,5 +142,5 @@ https://github.com/felipec/git/wiki/Comparison-of-git-remote-hg-alternatives[her
 
 == Contributing ==
 
-Send your patches to the mailing list git-fc@googlegroups.com (no need to
-subscribe).
+Consider submitting a [pull
+request](https://github.com/fingolfin/git-remote-hg/pulls). And thanks!
