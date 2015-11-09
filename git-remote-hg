@@ -492,11 +492,26 @@ def get_repo(url, alias):
         repo = hg.repository(myui, local_path)
         peer = hg.peer(repo.ui, {}, url)
 
+        # If the repo uses largefiles, make sure that it's loaded, and set up in the
+        #  shared repo
+        if 'largefiles' in repo.requirements:
+            lf = extensions.load(repo.ui, 'largefiles', None)
+            # if repo is not lf.lsfilesrepo
+            # lf.uisetup(repo.ui)
+            # lf.reposetup(repo.ui, repo)
+            # repo.ui.setconfig('extensions', 'largefiles', '')
+            # Verify that the shared repo also enables largefiles
+            shared_repo = hg.repository(myui, shared_path)
+            if 'largefiles' not in shared_repo.requirements:
+                shared_repo.requirements.add('largefiles') 
+                shared_repo._writerequirements()
+
         if check_version(3, 2):
             from mercurial import exchange
             exchange.pull(repo, peer, heads=None, force=True)
         else:
             repo.pull(peer, heads=None, force=True)
+
 
         updatebookmarks(repo, peer)
 
@@ -1337,6 +1352,7 @@ def main(args):
     global fake_bmark, hg_version
     global dry_run
     global notes, alias
+    global lf
 
     marks = None
     is_tmp = False
