@@ -1357,11 +1357,12 @@ def bye():
     if is_tmp:
         shutil.rmtree(dirname)
 
-atexit.register(bye)
+if __name__ == "__main__":
+    atexit.register(bye)
 
-try:
-    sys.exit(main(sys.argv))
-except Exception, e:
-    if DEBUG_REMOTEHG:
-       raise
-    die(str(e))
+    try:
+        sys.exit(main(sys.argv))
+    except Exception, e:
+        if DEBUG_REMOTEHG:
+           raise
+        die(str(e))
