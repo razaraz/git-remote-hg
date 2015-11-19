@@ -251,6 +251,92 @@ class Marks:
     def set_tip(self, branch, tip):
         self.tips[branch] = tip
 
+class LFMarks:
+    def __init__(self, path, repo):
+        self.repo = repo
+        self.path = path
+        self.clear()
+
+        if 'largefiles' in repo.requirements:
+            self.lfutil = extensions.load(repo.ui, 'largefiles', None).lfutil
+            self.openremote()
+            self.load()
+
+    def clear(self):
+        self.marks = {}
+
+    def load(self):
+        if not os.path.exists(self.path):
+            return
+
+        self.marks = json.load(open(self.path))
+
+    def openremote(self):
+        lfpullsource = getattr(self.repo, 'lfpullsource', None)
+        if lfpullsource:
+            path = self.repo.ui.expandpath(lfpullsource)
+        else:
+            path = self.repo.ui.expandpath('default')
+
+        # ui.expandpath() leaves 'default-push' and 'default' alone if
+        # they cannot be expanded: fallback to the empty string,
+        # meaning the current directory.
+        if path == 'default-push' or path == 'default':
+            path = ''
+            self.remote = peer
+        else:
+            path, _branches = hg.parseurl(path)
+            if peer.url == path:
+                self.remote = peer
+            else:
+                self.remote = hg.peer(repo, {}, path)
+
+
+    def store(self):
+        if len(self.marks):
+            json.dump(self.marks, open(self.path, 'w'))
+
+    def hg_hash(self, filectx):
+        if not self.lfutil or not self.lfutil.isstandin(filectx.path()):
+            return None
+        return self.lfutil.readstandin(self.repo, filectx.path(), filectx.rev())
+
+    def fix_lfile_path(self, filepath):
+        if not self.lfutil or not self.lfutil.isstandin(filepath):
+            return filepath
+        return self.lfutil.splitstandin(filepath)
+
+    def __contains__(self, filectx):
+        if not self.lfutil or not self.lfutil.isstandin(filectx.path()):
+            return False
+        return self.hg_hash(filectx) in self.marks
+
+    def __getitem__(self, filectx):
+        return marks[self.hg_hash(filectx)]
+
+    def preload_file(self, hg_hash):
+        tmp = os.tmpfile()
+        filestream = self.remote.getlfile(hg_hash)
+        dl_hash = self.lfutil.copyandhash(filestream, tmp)
+
+        if dl_hash != hg_hash:
+            warn("Error retrieving large file '%s' from revision '%s'. Downloaded hash did not match expected hash.", filectx.path(), filectx.rev())
+            return
+
+        tmp.seek(0)
+        cmd = ['git', 'hash-object', '-t', 'blob', '-w', '--stdin']
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=tmp)
+        git_hash, _ = process.communicate()
+
+        self.marks[hg_hash] = git_hash
+
+    def preload_rev(self, rev):
+        lfilehash = [self.lfutil.readstandin(self.repo, lfile, rev) for lfile in self.lfutil.listlfiles(self.repo, rev)]
+
+        for h in lfilehash:
+            if h not in self.marks:
+                self.preload_file(h)
+
 # Parser class for the input git feeds to us. See
 # - http://git-scm.com/docs/gitremote-helpers
 # - http://git-scm.com/docs/git-fast-import
@@ -261,6 +347,7 @@ class Parser:
         self.line = self.get_line()
 
     def get_line(self):
+        return ''
         return sys.stdin.readline().strip()
 
     def __getitem__(self, i):
@@ -321,7 +408,7 @@ class Parser:
 # hg->git: helper function for export_files, which modifies the given
 # file path, taken from a hg commit, for use in a fast-import stream.
 def fix_file_path(path):
-    path = posixpath.normpath(path)
+    path = lfmarks.fix_lfile_path(posixpath.normpath(path))
     if not os.path.isabs(path):
         return path
     return posixpath.relpath(path, '/')
@@ -332,19 +419,24 @@ def fix_file_path(path):
 def export_files(files):
     final = []
     for f in files:
-        fid = node.hex(f.filenode())
 
-        if fid in filenodes:
-            mark = filenodes[fid]
+        if f in lfmarks:
+            mark = lfmarks[f]
         else:
-            mark = marks.next_mark()
-            filenodes[fid] = mark
-            d = f.data()
+            filenode = f.filenode()
+            fid = node.hex(filenode)
 
-            print "blob"
-            print "mark :%u" % mark
-            print "data %d" % len(d)
-            print d
+            if fid in filenodes:
+                mark = filenodes[fid]
+            else:
+                mark = marks.next_mark()
+                filenodes[fid] = mark
+                d = f.data()
+
+                print "blob"
+                print "mark :%u" % mark
+                print "data %d" % len(d)
+                print d
 
         path = fix_file_path(f.path())
         final.append((gitmode(f.flags()), mark, path))
@@ -492,20 +584,6 @@ def get_repo(url, alias):
         repo = hg.repository(myui, local_path)
         peer = hg.peer(repo.ui, {}, url)
 
-        # If the repo uses largefiles, make sure that it's loaded, and set up in the
-        #  shared repo
-        if 'largefiles' in repo.requirements:
-            lf = extensions.load(repo.ui, 'largefiles', None)
-            # if repo is not lf.lsfilesrepo
-            # lf.uisetup(repo.ui)
-            # lf.reposetup(repo.ui, repo)
-            # repo.ui.setconfig('extensions', 'largefiles', '')
-            # Verify that the shared repo also enables largefiles
-            shared_repo = hg.repository(myui, shared_path)
-            if 'largefiles' not in shared_repo.requirements:
-                shared_repo.requirements.add('largefiles') 
-                shared_repo._writerequirements()
-
         if check_version(3, 2):
             from mercurial import exchange
             exchange.pull(repo, peer, heads=None, force=True)
@@ -576,6 +654,8 @@ def export_ref(repo, name, kind, head):
         if marks.is_marked(c.hex()):
             continue
 
+        lfmarks.preload_rev(rev)
+
         (manifest, user, (time, tz), files, desc, extra) = repo.changelog.read(node)
         rev_branch = extra['branch']
 
@@ -612,7 +692,7 @@ def export_ref(repo, name, kind, head):
                     continue
                 rename = c.filectx(f).renamed()
                 if rename:
-                    renames.append((rename[0], f))
+                    renames.append((fix_file_path(rename[0]), fix_file_path(f)))
 
             for e in renames:
                 extra_msg += "rename : %s => %s\n" % e
@@ -1344,7 +1424,7 @@ def fix_path(alias, repo, orig_url):
 
 def main(args):
     global prefix, gitdir, dirname, branches, bmarks
-    global marks, blob_marks, parsed_refs
+    global marks, lfmarks, blob_marks, parsed_refs
     global peer, mode, bad_mail, bad_name
     global track_branches, ignore_branches, force_push, is_tmp
     global parsed_tags
@@ -1352,9 +1432,9 @@ def main(args):
     global fake_bmark, hg_version
     global dry_run
     global notes, alias
-    global lf
 
     marks = None
+    lfmarks = None
     is_tmp = False
     gitdir = os.environ.get('GIT_DIR', None)
 
@@ -1415,11 +1495,16 @@ def main(args):
     marks_path = os.path.join(dirname, 'marks-hg')
     marks = Marks(marks_path, repo)
 
+    lfmarks_path = os.path.join(gitdir, 'hg', 'marks-lf')
+    lfmarks = LFMarks(lfmarks_path, repo)
+
     if sys.platform == 'win32':
         import msvcrt
         msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
 
     parser = Parser(repo)
+    do_list(parser)
+    export_branch(repo, '5.2/release')
     for line in parser:
         if parser.check('capabilities'):
             do_capabilities(parser)
@@ -1436,6 +1521,7 @@ def main(args):
         sys.stdout.flush()
 
     marks.store()
+    lfmarks.store()
 
 def bye():
     if is_tmp:
