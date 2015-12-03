@@ -6,27 +6,19 @@ repositories as if they were Git ones:
 git clone "hg::http://selenic.com/repo/hello"
 --------------------------------------
 
-== Installation ==
-
-'git-remote-hg' consists of a single Python script. It couldn't get simpler.
-
-=== Gentoo ===
-
-Under Gentoo Linux, add the third-party
-https://github.com/leycec/raiagent[raiagent] overlay and emerge 'git-remote-hg':
-
---------------------------------------
-layman -a raiagent
-emerge --autounmask-write git-remote-hg
---------------------------------------
-
-=== Manual ===
-
-On other platforms, manually install both Python 2 and Mercurial and download
-the latest 'git-remote-hg' script to any directory in your `$PATH`: e.g.,
+To enable this (e.g. under Linux), first make sure that you have Python
+2 and Mercurial installed. Then simply add the 'git-remote-hg' script
+anywhere in your `$PATH` and make sure it is executable, e.g.:
 
 --------------------------------------
 curl -o ~/bin/git-remote-hg https://raw.githubusercontent.com/fingolfin/git-remote-hg/master/git-remote-hg
+chmod +x ~/bin/git-remote-hg
+--------------------------------------
+
+If your system does not have curl, but wget, you can use this command:
+
+--------------------------------------
+wget https://raw.github.com/fingolfin/git-remote-hg/master/git-remote-hg -O ~/bin/git-remote-hg
 chmod +x ~/bin/git-remote-hg
 --------------------------------------
 
