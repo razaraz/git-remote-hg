@@ -14,19 +14,36 @@ check_files () {
 	test_cmp expected actual
 }
 
+hg_add_file() {
+	echo test > one &&
+	hg add one &&
+	hg commit -m add_file
+}
 
-test_expect_success 'cloning a removed file works' '
+hg_add_symlink() {
+	ln -s fake one &&
+	hg add one &&
+	hg commit -m add_link
+}
+
+hg_add_dir() {
+	mkdir one &&
+	echo test > one/two &&
+	hg add one/two &&
+	hg commit -m add_dir
+}
+
+
+test_expect_success 'cloning a removed file' '
 	test_when_finished "rm -rf hgrepo gitrepo" &&
 
 	(
 	hg init hgrepo &&
 	cd hgrepo &&
 
-	echo test > test_file &&
-	hg add test_file &&
-	hg commit -m add &&
+	hg_add_file &&
 
-	hg rm test_file &&
+	hg rm one &&
 	hg commit -m remove
 	) &&
 
@@ -34,50 +51,100 @@ test_expect_success 'cloning a removed file works' '
 	check_files gitrepo
 '
 
-test_expect_success 'cloning a file replaced with a directory' '
+test_expect_success 'file replaced by directory' '
 	test_when_finished "rm -rf hgrepo gitrepo" &&
 
 	(
 	hg init hgrepo &&
 	cd hgrepo &&
 
-	echo test > dir_or_file &&
-	hg add dir_or_file &&
-	hg commit -m add &&
-
-	hg rm dir_or_file &&
-	mkdir dir_or_file &&
-	echo test > dir_or_file/test_file &&
-	hg add dir_or_file/test_file &&
-	hg commit -m replase
+	hg_add_file &&
+	hg rm one &&
+	hg_add_dir
 	) &&
 
 	git clone "hg::hgrepo" gitrepo &&
-	check_files gitrepo "dir_or_file/test_file"
+	check_files gitrepo "one/two"
 '
 
-test_expect_success 'clone replace directory with a file' '
+test_expect_success 'file replaced by symlink' '
 	test_when_finished "rm -rf hgrepo gitrepo" &&
 
 	(
 	hg init hgrepo &&
 	cd hgrepo &&
 
-	mkdir dir_or_file &&
-	echo test > dir_or_file/test_file &&
-	hg add dir_or_file/test_file &&
-	hg commit -m add &&
-
-	hg rm dir_or_file/test_file &&
-	echo test > dir_or_file &&
-	hg add dir_or_file &&
-	hg commit -m add &&
-
-	hg rm dir_or_file
+	hg_add_file &&
+	hg rm one &&
+	hg_add_symlink
 	) &&
 
 	git clone "hg::hgrepo" gitrepo &&
-	check_files gitrepo "dir_or_file"
+	check_files gitrepo "one"
+'
+
+test_expect_success 'directory replaced by file' '
+	test_when_finished "rm -rf hgrepo gitrepo" &&
+
+	(
+	hg init hgrepo &&
+	cd hgrepo &&
+
+	hg_add_dir &&
+	hg rm one/two &&
+	hg_add_file
+	) &&
+
+	git clone "hg::hgrepo" gitrepo &&
+	check_files gitrepo "one"
+'
+
+test_expect_success 'directory replaced by symlink' '
+	test_when_finished "rm -rf hgrepo gitrepo" &&
+
+	(
+	hg init hgrepo &&
+	cd hgrepo &&
+
+	hg_add_dir &&
+	hg rm one/two &&
+	hg_add_symlink
+	) &&
+
+	git clone "hg::hgrepo" gitrepo &&
+	check_files gitrepo "one"
+'
+
+test_expect_success 'symlink replaced by directory' '
+	test_when_finished "rm -rf hgrepo gitrepo" &&
+
+	(
+	hg init hgrepo &&
+	cd hgrepo &&
+
+	hg_add_symlink &&
+	hg rm one &&
+	hg_add_dir
+	) &&
+
+	git clone "hg::hgrepo" gitrepo &&
+	check_files gitrepo "one/two"
+'
+
+test_expect_success 'symlink replaced by file' '
+	test_when_finished "rm -rf hgrepo gitrepo" &&
+
+	(
+	hg init hgrepo &&
+	cd hgrepo &&
+
+	hg_add_symlink &&
+	hg rm one &&
+	hg_add_file
+	) &&
+
+	git clone "hg::hgrepo" gitrepo &&
+	check_files gitrepo "one"
 '
 
 test_done
