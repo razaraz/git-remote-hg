@@ -1418,4 +1418,4 @@ if __name__ == "__main__":
     except Exception, e:
         if DEBUG_REMOTEHG:
            raise
-        die(str(e))
+        die("%s", e)
