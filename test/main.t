@@ -180,43 +180,6 @@ test_expect_success 'new bookmark' '
 # cleanup previous stuff
 rm -rf hgrepo
 
-author_test () {
-	echo $1 >> content &&
-	hg commit -u "$2" -m "add $1" &&
-	echo "$3" >> ../expected
-}
-
-test_expect_success 'authors' '
-	test_when_finished "rm -rf hgrepo gitrepo" &&
-
-	(
-	hg init hgrepo &&
-	cd hgrepo &&
-
-	touch content &&
-	hg add content &&
-
-	> ../expected &&
-	author_test alpha "" "H G Wells <wells@example.com>" &&
-	author_test beta "beta" "beta <unknown>" &&
-	author_test gamma "gamma <test@example.com> (comment)" "gamma <test@example.com>" &&
-	author_test delta "<delta@example.com>" "Unknown <delta@example.com>" &&
-	author_test epsilon "epsilon<test@example.com>" "epsilon <test@example.com>" &&
-	author_test zeta "zeta <test@example.com" "zeta <test@example.com>" &&
-	author_test eta " eta " "eta <unknown>" &&
-	author_test theta "theta < test@example.com >" "theta <test@example.com>" &&
-	author_test iota "iota >test@example.com>" "iota <test@example.com>" &&
-	author_test kappa "kappa < test <at> example <dot> com>" "kappa <unknown>" &&
-	author_test lambda "lambda@example.com" "Unknown <lambda@example.com>" &&
-	author_test mu "mu.mu@example.com" "Unknown <mu.mu@example.com>"
-	) &&
-
-	git clone "hg::hgrepo" gitrepo &&
-	git --git-dir=gitrepo/.git log --reverse --format="%an <%ae>" > actual &&
-
-	test_cmp expected actual
-'
-
 test_expect_success 'strip' '
 	test_when_finished "rm -rf hgrepo gitrepo" &&
 
