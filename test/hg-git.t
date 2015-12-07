@@ -7,9 +7,7 @@
 #
 
 test_description='Test remote-hg output compared to hg-git'
-
-test -n "$TEST_DIRECTORY" || TEST_DIRECTORY=$(dirname $0)/
-. "$TEST_DIRECTORY"/test-lib.sh
+. ./test-lib.sh
 
 if python2 -c 'import hggit' > /dev/null 2>&1
 then

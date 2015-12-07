@@ -1,9 +1,6 @@
 RM ?= rm -f
 
 T = $(wildcard *.t)
-TEST_DIRECTORY := $(CURDIR)
-
-export TEST_DIRECTORY
 
 all: test
 

@@ -7,9 +7,7 @@
 #
 
 test_description='Test bidirectionality of remote-hg'
-
-test -n "$TEST_DIRECTORY" || TEST_DIRECTORY=$(dirname $0)/
-. "$TEST_DIRECTORY"/test-lib.sh
+. ./test-lib.sh
 
 # clone to a git repo
 git_clone () {
