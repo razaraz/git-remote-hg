@@ -91,16 +91,8 @@ check_push () {
 }
 
 setup () {
-	cat > "$HOME"/.hgrc <<-EOF &&
-	[ui]
-	username = H G Wells <wells@example.com>
-	[extensions]
-	mq =
-	EOF
-
-	GIT_AUTHOR_DATE="2007-01-01 00:00:00 +0230" &&
-	GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE" &&
-	export GIT_COMMITTER_DATE GIT_AUTHOR_DATE
+	# enable mq extension (for "strip" test)
+	echo "mq =" >> "$HOME"/.hgrc
 }
 
 setup

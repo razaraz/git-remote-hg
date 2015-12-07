@@ -43,24 +43,8 @@ hg_log () {
 }
 
 setup () {
-	cat > "$HOME"/.hgrc <<-EOF &&
-	[ui]
-	username = A U Thor <author@example.com>
-	[defaults]
-	backout = -d "0 0"
-	commit = -d "0 0"
-	debugrawcommit = -d "0 0"
-	tag = -d "0 0"
-	[extensions]"
-	graphlog =
-	EOF
 	git config --global remote-hg.hg-git-compat true
 	git config --global remote-hg.track-branches true
-
-	HGEDITOR=/usr/bin/true
-	GIT_AUTHOR_DATE="2007-01-01 00:00:00 +0230"
-	GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
-	export HGEDITOR GIT_AUTHOR_DATE GIT_COMMITTER_DATE
 }
 
 setup
@@ -173,8 +157,8 @@ test_expect_success 'git submodules' '
 	git commit -m "add alpha" &&
 	git tag alpha &&
 
-    git init -q subrepo &&
-    cd subrepo
+	git init -q subrepo &&
+	cd subrepo
 	echo beta > beta &&
 	git add beta &&
 	git commit -m "add beta" &&

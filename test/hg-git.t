@@ -87,28 +87,11 @@ git_log () {
 }
 
 setup () {
-	cat > "$HOME"/.hgrc <<-EOF &&
-	[ui]
-	username = A U Thor <author@example.com>
-	[defaults]
-	backout = -d "0 0"
-	commit = -d "0 0"
-	debugrawcommit = -d "0 0"
-	tag = -d "0 0"
-	[extensions]
-	$hggit =
-	graphlog =
-	EOF
+	# enable hg-git extension
+	echo "$hggit =" >> "$HOME"/.hgrc
 	git config --global receive.denycurrentbranch warn
 	git config --global remote-hg.hg-git-compat true
 	git config --global remote-hg.track-branches false
-
-	HGEDITOR=true
-	HGMERGE=true
-
-	GIT_AUTHOR_DATE="2007-01-01 00:00:00 +0230"
-	GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
-	export HGEDITOR HGMERGE GIT_AUTHOR_DATE GIT_COMMITTER_DATE
 }
 
 setup
