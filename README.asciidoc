@@ -140,5 +140,5 @@ https://github.com/felipec/git/wiki/Comparison-of-git-remote-hg-alternatives[her
 
 == Contributing ==
 
-Consider submitting a [pull
-request](https://github.com/fingolfin/git-remote-hg/pulls). And thanks!
+If you spot a bug and know how to fix it, or have some other improvements, please
+consider submitting a https://github.com/fingolfin/git-remote-hg/pulls[pull request].
