@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+﻿#!/usr/bin/env python2
 #
 # Copyright (c) 2012 Felipe Contreras
 #
@@ -252,6 +252,43 @@ class Marks:
         self.tips[branch] = tip
 
 class LFMarks:
+    import threading
+    import Queue
+    class LFExporter(threading.Thread):
+        def __init__(self, lfutil, remote, lfqueue, markqueue):
+            threading.Thread.__init__(self)
+            self.lfutil = lfutil
+            self.remote = remote
+            self.lfqueue = lfqueue
+            self.markqueue = markqueue
+
+        def export_lfile(self, hg_hash):
+            tmp = os.tmpfile()
+            filestream = self.remote.getlfile(hg_hash)
+            dl_hash = self.lfutil.copyandhash(filestream, tmp)
+
+            if dl_hash != hg_hash:
+                warn("Error retrieving large file '%s' from revision '%s'. Downloaded hash did not match expected hash.", filectx.path(), filectx.rev())
+                return None
+
+            tmp.seek(0)
+            cmd = ['git', 'hash-object', '-t', 'blob', '-w', '--stdin']
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=tmp)
+            git_hash, _ = process.communicate()
+
+            return git_hash.strip('\n')
+
+        def run(self):
+            # If there's no work available, sleep
+            while True:
+                hg_hash = self.lfqueue.get()
+                git_hash = self.export_lfile(hg_hash)
+                if git_hash:
+                    self.markqueue.put((hg_hash, git_hash))
+
+                self.lfqueue.task_done()
+            return
+
     def __init__(self, path, repo):
         self.repo = repo
         self.path = path
@@ -264,6 +301,7 @@ class LFMarks:
 
     def clear(self):
         self.marks = {}
+        self.rev_lfiles = {}
 
     def load(self):
         if not os.path.exists(self.path):
@@ -293,13 +331,14 @@ class LFMarks:
 
 
     def store(self):
+        self.lfqueue.join()
         if len(self.marks):
             json.dump(self.marks, open(self.path, 'w'))
 
     def hg_hash(self, filectx):
         if not self.lfutil or not self.lfutil.isstandin(filectx.path()):
             return None
-        return self.lfutil.readstandin(self.repo, filectx.path(), filectx.rev())
+        return self.rev_lfiles[filectx.filerev()]
 
     def fix_lfile_path(self, filepath):
         if not self.lfutil or not self.lfutil.isstandin(filepath):
@@ -314,28 +353,21 @@ class LFMarks:
     def __getitem__(self, filectx):
         return marks[self.hg_hash(filectx)]
 
-    def preload_file(self, hg_hash):
-        tmp = os.tmpfile()
-        filestream = self.remote.getlfile(hg_hash)
-        dl_hash = self.lfutil.copyandhash(filestream, tmp)
-
-        if dl_hash != hg_hash:
-            warn("Error retrieving large file '%s' from revision '%s'. Downloaded hash did not match expected hash.", filectx.path(), filectx.rev())
-            return
-
-        tmp.seek(0)
-        cmd = ['git', 'hash-object', '-t', 'blob', '-w', '--stdin']
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=tmp)
-        git_hash, _ = process.communicate()
-
-        self.marks[hg_hash] = git_hash
+    def getlfiles(self, rev):
+        if rev not in self.rev_lfiles:
+            matcher = self.lfutil.getstandingmatcher(repo)
+            rev_ctx = repo[rev]
+            lfiles = [(f, rev_ctx[f].data().strip()) for f in rev_ctx.walk(matcher)]
+            self.rev_lfiles[rev] = lfiles
+            return lfiles
+        return self.rev_lfiles[rev]
 
     def preload_rev(self, rev):
-        lfilehash = [self.lfutil.readstandin(self.repo, lfile, rev) for lfile in self.lfutil.listlfiles(self.repo, rev)]
+        lfiles = self.getlfiles(rev)
 
-        for h in lfilehash:
+        for f, h in lfiles:
             if h not in self.marks:
-                self.preload_file(h)
+                self.lfqueue.put(h)
 
 # Parser class for the input git feeds to us. See
 # - http://git-scm.com/docs/gitremote-helpers
@@ -437,6 +469,8 @@ def export_files(files):
                 print "mark :%u" % mark
                 print "data %d" % len(d)
                 print d
+
+                mark = ":%u" % mark
 
         path = fix_file_path(f.path())
         final.append((gitmode(f.flags()), mark, path))
@@ -726,7 +760,7 @@ def export_ref(repo, name, kind, head):
         for f in removed:
             print "D %s" % (fix_file_path(f))
         for f in modified_final:
-            print "M %s :%u %s" % f
+            print "M %s %s %s" % f
         print
 
         progress = (rev - tip)
